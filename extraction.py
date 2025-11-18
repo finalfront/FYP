@@ -169,11 +169,12 @@ class RetrosynthesisParser:
 # Example usage
 if __name__ == "__main__":
     # Your data here
-    data = json.load(open("Benzocaine.json","r"))  # Your input data
+    data = json.load(open("env/Benzocaine.json","r"))  # Your input data
     # Parse the data
     parser = RetrosynthesisParser()
     graphs = parser.parse(data)
-    
+    # sort to key of your choice, default low to high, set reverse = True for high to low
+    graphs = sorted(graphs,key = lambda graph: graph.metadata.atom_economy, reverse= True) 
     # Analyze each graph
     for i, graph in enumerate(graphs):
         print(f"\n=== Graph {i + 1} ===")
