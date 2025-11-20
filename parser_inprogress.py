@@ -1,5 +1,3 @@
-# Jupyter-friendly retrosynthesis tree visualizer & summarizer
-# 依赖: pandas matplotlib networkx
 import pandas as pd
 import json
 import matplotlib.pyplot as plt
