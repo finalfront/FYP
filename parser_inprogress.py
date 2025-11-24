@@ -5,7 +5,7 @@ import networkx as nx
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 import textwrap
-import argparse
+import argparse 
 import sys
 from dataclasses import dataclass, field
 from rdkit import Chem
@@ -21,6 +21,9 @@ DEFAULT_FILES = {
     "Favipiravir": r"C:\Users\qsijw\Desktop\Fall 2025-2026\FYP\Github\Favipiravir.json",
     "Paracetamol": r"C:\Users\qsijw\Desktop\Fall 2025-2026\FYP\Github\Paracetamol.json",
     "Phenacetin": r"C:\Users\qsijw\Desktop\Fall 2025-2026\FYP\Github\Phenacetin.json",
+    "Erlotinib": r"C:\Users\qsijw\Desktop\Fall 2025-2026\FYP\Github\Erlotinib.json",
+    "Lidocaine": r"C:\Users\qsijw\Desktop\Fall 2025-2026\FYP\Github\Lidocaine.json",
+    "Atrovastatin": r"C:\Users\qsijw\Desktop\Fall 2025-2026\FYP\Github\Atrovastatin.json"
 }
 DEFAULT_OUTDIR = r"C:\Users\qsijw\Desktop\Fall 2025-2026\FYP\Github\Output"
 DEFAULT_MAXPLOTS = 5
@@ -363,6 +366,9 @@ def cli_entry():
     parser.add_argument("--paracetamol", type=str, default=DEFAULT_FILES["Paracetamol"])
     parser.add_argument("--phenacetin", type=str, default=DEFAULT_FILES["Phenacetin"])
     parser.add_argument("--benzocaine", type=str, default=DEFAULT_FILES["Benzocaine"])
+    parser.add_argument("--Atrovastatin", type=str, default=DEFAULT_FILES["Atrovastatin"])
+    parser.add_argument("--Lidocaine", type=str, default=DEFAULT_FILES["Lidocaine"])
+    parser.add_argument("--Erlotinib", type=str, default=DEFAULT_FILES["Erlotinib"])
     parser.add_argument("--outdir", type=str, default=DEFAULT_OUTDIR)
     parser.add_argument("--max_plots", type=int, default=DEFAULT_MAXPLOTS)
     args, _unknown = parser.parse_known_args()
@@ -388,6 +394,9 @@ def notebook_run(
     favipiravir_path: str = DEFAULT_FILES["Favipiravir"],
     paracetamol_path: str = DEFAULT_FILES["Paracetamol"],
     phenacetin_path: str = DEFAULT_FILES["Phenacetin"],
+    erlotinib_path: str = DEFAULT_FILES["Erlotinib"],
+    atrovastatin_path: str = DEFAULT_FILES["Atrovastatin"],
+    lidocaine_path: str = DEFAULT_FILES["Lidocaine"],
 
     outdir: str = DEFAULT_OUTDIR,
     max_plots: int = DEFAULT_MAXPLOTS,
@@ -395,7 +404,8 @@ def notebook_run(
     files = {"Celecoxib": celecoxib_path, "Ibuprofen": ibuprofen_path, 
              "Benzocaine": benzocaine_path, "Aspirin": aspirin_path, 
              "Favipiravir": favipiravir_path, "Paracetamol": paracetamol_path, 
-             "Phenacetin": phenacetin_path}
+             "Phenacetin": phenacetin_path, "Erlotinib": erlotinib_path,
+             "Atrovastatin": atrovastatin_path, "Lidocaine": lidocaine_path}
     out_dir = Path(outdir)
     combined = process_targets(files, out_dir, max_routes_to_plot=max_plots)
     if not combined.empty:
