@@ -1,6 +1,21 @@
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 import json
+from rdkit import Chem
+from rdkit.Chem import Descriptors
+
+def smiles_to_mol_weight(smiles: str) -> float:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return 0.0
+        return Descriptors.MolWt(mol)
+
+def calc_pmi(product_smiles, reactant_smiles_list):
+    prod_mass = smiles_to_mol_weight(product_smiles)
+    react_mass_sum = sum(smiles_to_mol_weight(s) for s in reactant_smiles_list)
+    if prod_mass == 0:
+        return None
+    return react_mass_sum / prod_mass
 @dataclass
 class Node:
     id: str
@@ -188,12 +203,26 @@ if __name__ == "__main__":
         if target:
             print(f"Target: {target.smiles}")
         
+        # Get PMI values
+        print(f"\nReaction Steps")
+        for j, step in enumerate(graph.get_reaction_steps(), 1):
+            product = step['product']
+            reactants = step['reactants']
+
+            product_smiles = product.smiles if product else None
+            reactant_smiles_list = [r.smiles for r in reactants]
+
+            pmi_value = None
+            if product_smiles is not None and reactant_smiles_list:
+                pmi_value = calc_pmi(product_smiles, reactant_smiles_list)
+
         # Get all reaction steps
         print(f"\nReaction steps:")
         for j, step in enumerate(graph.get_reaction_steps(), 1):
             print(f"\n  Step {j}:")
             print(f"  Product: {step['product'].smiles if step['product'] else 'N/A'}")
             print(f"  Reactants: {[r.smiles for r in step['reactants']]}")
+            print(f"  PMI: {pmi_value:.2f}" if pmi_value is not None else "  PMI: N/A")
         
         # Organize by depth
         print(f"\nNodes by depth:")
