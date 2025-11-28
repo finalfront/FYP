@@ -192,17 +192,6 @@ if __name__ == "__main__":
     graphs = sorted(graphs,key = lambda graph: graph.metadata.avg_plausibility, reverse= True) 
     # Analyze each graph
     for i, graph in enumerate(graphs):
-        print(f"\n=== Graph {i + 1} ===")
-        print(f"Depth: {graph.metadata.depth}")
-        print(f"Number of reactions: {graph.metadata.num_reactions}")
-        print(f"Precursor cost: {graph.metadata.precursor_cost}")
-        print(f"Atom economy: {graph.metadata.atom_economy:.2%}")
-        
-        # Get target molecule
-        target = graph.get_target_molecule()
-        if target:
-            print(f"Target: {target.smiles}")
-        
         # Get PMI values
         print(f"\nReaction Steps")
         for j, step in enumerate(graph.get_reaction_steps(), 1):
@@ -216,13 +205,26 @@ if __name__ == "__main__":
             if product_smiles is not None and reactant_smiles_list:
                 pmi_value = calc_pmi(product_smiles, reactant_smiles_list)
 
+        print(f"\n=== Graph {i + 1} ===")
+        print(f"Depth: {graph.metadata.depth}")
+        print(f"Number of reactions: {graph.metadata.num_reactions}")
+        print(f"Precursor cost: {graph.metadata.precursor_cost}")
+        print(f"Atom economy: {graph.metadata.atom_economy:.2%}")
+        print(f"PMI: {pmi_value:.2f}" if pmi_value is not None else "  PMI: N/A")
+        
+        # Get target molecule
+        target = graph.get_target_molecule()
+        if target:
+            print(f"Target: {target.smiles}")
+        
+
         # Get all reaction steps
         print(f"\nReaction steps:")
         for j, step in enumerate(graph.get_reaction_steps(), 1):
             print(f"\n  Step {j}:")
             print(f"  Product: {step['product'].smiles if step['product'] else 'N/A'}")
             print(f"  Reactants: {[r.smiles for r in step['reactants']]}")
-            print(f"  PMI: {pmi_value:.2f}" if pmi_value is not None else "  PMI: N/A")
+    
         
         # Organize by depth
         print(f"\nNodes by depth:")
