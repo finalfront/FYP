@@ -16,23 +16,31 @@ def calc_pmi(product_smiles, reactant_smiles_list):
     if prod_mass == 0:
         return None
     return react_mass_sum / prod_mass
+
+
+# ---------------------------------------------------------------------------
+# Data classes
+# ---------------------------------------------------------------------------
+
 @dataclass
 class Node:
     id: str
     smiles: str
     type: str  # 'chemical' or 'reaction'
-    
+
     def is_reaction(self) -> bool:
         return self.type == 'reaction'
-    
+
     def is_chemical(self) -> bool:
         return self.type == 'chemical'
+
 
 @dataclass
 class Edge:
     from_id: str
     to_id: str
     id: str
+
 
 @dataclass
 class GraphMetadata:
@@ -45,9 +53,11 @@ class GraphMetadata:
     avg_plausibility: float
     min_score: float
     min_plausibility: float
-    atom_economy: float
+    atom_economy: float          # stored as fraction (0-1), capped at 1.0
+    atom_economy_anomaly: bool   # True if the raw JSON value exceeded 1.0
     score: Optional[float] = None
     cluster_id: Optional[Any] = None
+
 
 @dataclass
 class RetrosynthesisGraph:
@@ -56,95 +66,89 @@ class RetrosynthesisGraph:
     metadata: GraphMetadata
     nodes: List[Node] = field(default_factory=list)
     edges: List[Edge] = field(default_factory=list)
-    
+
     def get_node_by_id(self, node_id: str) -> Optional[Node]:
-        """Get a node by its ID."""
         for node in self.nodes:
             if node.id == node_id:
                 return node
         return None
-    
+
     def get_reactions(self) -> List[Node]:
-        """Get all reaction nodes."""
         return [node for node in self.nodes if node.is_reaction()]
-    
+
     def get_chemicals(self) -> List[Node]:
-        """Get all chemical nodes."""
         return [node for node in self.nodes if node.is_chemical()]
-    
+
     def get_target_molecule(self) -> Optional[Node]:
-        """Get the target molecule (node with all-zeros UUID)."""
         return self.get_node_by_id("00000000-0000-0000-0000-000000000000")
-    
+
     def get_precursors(self, node_id: str) -> List[Node]:
-        """Get all precursor nodes for a given node."""
-        precursor_ids = [edge.to_id for edge in self.edges if edge.from_id == node_id]
+        precursor_ids = [e.to_id for e in self.edges if e.from_id == node_id]
         return [self.get_node_by_id(pid) for pid in precursor_ids if self.get_node_by_id(pid)]
-    
+
     def get_product(self, node_id: str) -> Optional[Node]:
-        """Get the product node for a given node."""
         for edge in self.edges:
             if edge.to_id == node_id:
                 return self.get_node_by_id(edge.from_id)
         return None
-    
+
     def traverse_by_depth(self) -> Dict[int, List[Node]]:
-        """Organize nodes by their depth in the synthesis tree."""
-        depth_map = {}
-        visited = set()
-        
+        depth_map: Dict[int, List[Node]] = {}
+        visited: set = set()
+
         def dfs(node_id: str, depth: int):
             if node_id in visited:
                 return
             visited.add(node_id)
-            
             node = self.get_node_by_id(node_id)
             if node:
-                if depth not in depth_map:
-                    depth_map[depth] = []
-                depth_map[depth].append(node)
-                
-                # Traverse to precursors
+                depth_map.setdefault(depth, []).append(node)
                 for precursor in self.get_precursors(node_id):
                     dfs(precursor.id, depth + 1)
-        
+
         target = self.get_target_molecule()
         if target:
             dfs(target.id, 0)
-        
         return depth_map
-    
+
     def get_reaction_steps(self) -> List[Dict[str, Any]]:
-        """Extract each reaction step with its reactants and products."""
         steps = []
         for reaction_node in self.get_reactions():
             product = self.get_product(reaction_node.id)
             reactants = self.get_precursors(reaction_node.id)
-            
             steps.append({
                 'reaction': reaction_node,
                 'product': product,
                 'reactants': reactants,
-                'smiles': reaction_node.smiles
+                'smiles': reaction_node.smiles,
             })
-        
         return steps
 
+
+# ---------------------------------------------------------------------------
+# Parser
+# ---------------------------------------------------------------------------
 
 class RetrosynthesisParser:
     @staticmethod
     def parse(data: List[Dict[str, Any]]) -> List[RetrosynthesisGraph]:
-        """Parse a list of retrosynthesis graphs."""
-        graphs = []
-        for graph_data in data:
-            graphs.append(RetrosynthesisParser.parse_single(graph_data))
-        return graphs
-    
+        return [RetrosynthesisParser.parse_single(g) for g in data]
+
     @staticmethod
     def parse_single(graph_data: Dict[str, Any]) -> RetrosynthesisGraph:
-        """Parse a single retrosynthesis graph."""
-        # Parse metadata
         graph_info = graph_data['graph']
+
+        # Validate atom economy
+        raw_ae = graph_info['atom_economy']
+        ae_anomaly = raw_ae > 1.0
+        if ae_anomaly:
+            print(
+                f"  [WARN] atom_economy={raw_ae:.4f} > 1.0 — "
+                f"upstream data anomaly (missing oxidant/reagent in retrosynthesis). "
+                f"Capped at 1.0."
+            )
+            raw_ae = 1.0
+
         metadata = GraphMetadata(
             depth=graph_info['depth'],
             precursor_cost=graph_info['precursor_cost'],
@@ -155,79 +159,118 @@ class RetrosynthesisParser:
             avg_plausibility=graph_info['avg_plausibility'],
             min_score=graph_info['min_score'],
             min_plausibility=graph_info['min_plausibility'],
-            atom_economy=graph_info['atom_economy'],
+            atom_economy=raw_ae,
+            atom_economy_anomaly=ae_anomaly,
             score=graph_info.get('score'),
-            cluster_id=graph_info.get('cluster_id')
+            cluster_id=graph_info.get('cluster_id'),
         )
-        
-        # Parse nodes
-        nodes = [
-            Node(id=n['id'], smiles=n['smiles'], type=n['type'])
-            for n in graph_data['nodes']
-        ]
-        
-        # Parse edges
-        edges = [
-            Edge(from_id=e['from'], to_id=e['to'], id=e['id'])
-            for e in graph_data['edges']
-        ]
-        
+
+        nodes = [Node(id=n['id'], smiles=n['smiles'], type=n['type']) for n in graph_data['nodes']]
+        edges = [Edge(from_id=e['from'], to_id=e['to'], id=e['id']) for e in graph_data['edges']]
+
         return RetrosynthesisGraph(
             directed=graph_data['directed'],
             multigraph=graph_data['multigraph'],
             metadata=metadata,
             nodes=nodes,
-            edges=edges
+            edges=edges,
         )
 
 
-# Example usage
+# ---------------------------------------------------------------------------
+# Filter
+# ---------------------------------------------------------------------------
+
+def filter_graphs(
+    graphs: List[RetrosynthesisGraph],
+    remove_ae_anomalies: bool = True,
+) -> List[RetrosynthesisGraph]:
+    """
+    Filter out chemically invalid routes.
+
+    Parameters
+    ----------
+    graphs : list of RetrosynthesisGraph
+    remove_ae_anomalies : bool
+        If True (default), drop graphs whose raw atom_economy exceeded 1.0.
+        These routes are missing reagents (e.g. oxidants) and are unreliable.
+
+    Returns
+    -------
+    Filtered list. Prints a summary of how many were removed.
+    """
+    original_count = len(graphs)
+
+    if remove_ae_anomalies:
+        graphs = [g for g in graphs if not g.metadata.atom_economy_anomaly]
+        removed = original_count - len(graphs)
+        if removed:
+            print(f"  [FILTER] Removed {removed} graph(s) with AE > 100% "
+                  f"(missing reagents in retrosynthesis data).")
+
+    return graphs
+
+
+# ---------------------------------------------------------------------------
+# Report writer
+# ---------------------------------------------------------------------------
+
+def save_report(graphs: List[RetrosynthesisGraph], filename: str) -> None:
+    with open(filename, "w", encoding="utf-8") as f:
+        for i, graph in enumerate(graphs):
+            ae_pct = graph.metadata.atom_economy * 100
+            f.write(f"\n=== Graph {i + 1} ===\n")
+            f.write(f"Depth: {graph.metadata.depth}\n")
+            f.write(f"Number of reactions: {graph.metadata.num_reactions}\n")
+            f.write(f"Precursor cost: {graph.metadata.precursor_cost}\n")
+            f.write(f"Atom economy: {ae_pct:.2f}%\n")
+
+            target = graph.get_target_molecule()
+            if target:
+                f.write(f"Target: {target.smiles}\n")
+
+            f.write("\nReaction steps:\n")
+            for j, step in enumerate(graph.get_reaction_steps(), 1):
+                product = step['product']
+                reactants = step['reactants']
+                product_smiles = product.smiles if product else None
+                reactant_smiles_list = [r.smiles for r in reactants]
+
+                pmi_value = None
+                if product_smiles and reactant_smiles_list:
+                    pmi_value = calc_pmi(product_smiles, reactant_smiles_list)
+
+                f.write(f"\n  Step {j}:\n")
+                f.write(f"  Product: {product_smiles or 'N/A'}\n")
+                f.write(f"  Reactants: {reactant_smiles_list}\n")
+                f.write(f"  PMI: {pmi_value:.2f}\n" if pmi_value is not None else "  PMI: N/A\n")
+
+            f.write("\nNodes by depth:\n")
+            for depth, nodes in sorted(graph.traverse_by_depth().items()):
+                f.write(f"  Depth {depth}: {len(nodes)} nodes\n")
+
+            f.write("-" * 30 + "\n")
+
+    print(f"  Saved -> {filename}")
+
+
+# ---------------------------------------------------------------------------
+# Single-file entry point (kept for backward compatibility)
+# ---------------------------------------------------------------------------
+
 if __name__ == "__main__":
-    # Your data here
-    data = json.load(open("data/Benzocaine.json","r"))  # Your input data
-    # Parse the data
+    import sys
+    input_file  = sys.argv[1] if len(sys.argv) > 1 else "data/Phenacetin.json"
+    output_file = sys.argv[2] if len(sys.argv) > 2 else "dataoutput/Phenacetin.txt"
+
+    print(f"Processing {input_file} ...")
+    with open(input_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
     parser = RetrosynthesisParser()
     graphs = parser.parse(data)
-    # sort to key of your choice, default low to high, set reverse = True for high to low
-    graphs = sorted(graphs,key = lambda graph: graph.metadata.avg_plausibility, reverse= True) 
-    # Analyze each graph
-    for i, graph in enumerate(graphs):
-        # Get PMI values
-        print(f"\nReaction Steps")
-        for j, step in enumerate(graph.get_reaction_steps(), 1):
-            product = step['product']
-            reactants = step['reactants']
+    graphs = sorted(graphs, key=lambda g: g.metadata.avg_plausibility, reverse=True)
+    graphs = filter_graphs(graphs, remove_ae_anomalies=True)
 
-            product_smiles = product.smiles if product else None
-            reactant_smiles_list = [r.smiles for r in reactants]
-
-            pmi_value = None
-            if product_smiles is not None and reactant_smiles_list:
-                pmi_value = calc_pmi(product_smiles, reactant_smiles_list)
-
-        print(f"\n=== Graph {i + 1} ===")
-        print(f"Depth: {graph.metadata.depth}")
-        print(f"Number of reactions: {graph.metadata.num_reactions}")
-        print(f"Precursor cost: {graph.metadata.precursor_cost}")
-        print(f"Atom economy: {graph.metadata.atom_economy:.2%}")
-        print(f"PMI: {pmi_value:.2f}" if pmi_value is not None else "  PMI: N/A")
-        
-        # Get target molecule
-        target = graph.get_target_molecule()
-        if target:
-            print(f"Target: {target.smiles}")
-        
-
-        # Get all reaction steps
-        print(f"\nReaction steps:")
-        for j, step in enumerate(graph.get_reaction_steps(), 1):
-            print(f"\n  Step {j}:")
-            print(f"  Product: {step['product'].smiles if step['product'] else 'N/A'}")
-            print(f"  Reactants: {[r.smiles for r in step['reactants']]}")
-    
-        
-        # Organize by depth
-        print(f"\nNodes by depth:")
-        depth_map = graph.traverse_by_depth()
-        for depth in sorted(depth_map.keys()):
-            print(f"  Depth {depth}: {len(depth_map[depth])} nodes")
+    save_report(graphs, output_file)
+    print("Done.")
