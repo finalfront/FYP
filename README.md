@@ -8,10 +8,12 @@ This project leverages large language models to assess chemical synthesis pathwa
 
 ## Features
 
-- 🔬 Retrosynthetic route analysis
+- 🔬 Retrosynthetic route analysis using **ASKCOS**
 - 🌱 Sustainability evaluation using Green Chemistry principles
 - 🤖 LLM-powered assessment and ranking
 - 📊 Comparative route analysis
+- ⚛️ Atom economy calculations with **RDKit**
+- ⚠️ Hazard evaluation via **PubChem API**
 
 ## The 12 Principles of Green Chemistry
 
@@ -27,5 +29,3 @@ This project leverages large language models to assess chemical synthesis pathwa
 10. Design for Degradation
 11. Real-time analysis for Pollution Prevention
 12. Inherently Safer Chemistry for Accident Prevention
-
-
